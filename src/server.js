@@ -9,7 +9,7 @@ const PORT = 3000;
 const PHOTOS_BASE = '/media/jef/1.44.1-72806/photos';
 const LOW_BASE = '/media/jef/1.44.1-72806/photo-low';
 
-app.use(express.static('public'));
+app.use(express.static(path.join(__dirname, 'public')));
 app.use(express.json());
 
 // List year folders
