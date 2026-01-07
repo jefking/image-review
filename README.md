@@ -32,13 +32,3 @@ Then open http://localhost:3000 in your browser.
 3. Use arrow keys to navigate or reject photos
 4. Rejected photos are moved to `/media/jef/1.44.1-72806/photo-low/[year]/`
 5. When you reach the end of a folder, you return to folder selection
-
-## Project Structure
-
-```
-src/
-  server.js       # Express backend
-  public/
-    index.html    # UI layout
-    app.js        # Frontend logic
-```
