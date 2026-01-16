@@ -168,6 +168,20 @@ function prevPhoto() {
     }
 }
 
+function jumpToImage() {
+    const input = prompt(`Jump to image (1-${photos.length}):`);
+    if (input === null) return; // User cancelled
+
+    const imageNum = parseInt(input, 10);
+    if (isNaN(imageNum) || imageNum < 1 || imageNum > photos.length) {
+        alert(`Please enter a number between 1 and ${photos.length}`);
+        return;
+    }
+
+    currentIndex = imageNum - 1; // Convert to 0-based index
+    showPhoto(false); // Don't skip - show the exact image requested
+}
+
 async function moveToLow() {
     const filename = photos[currentIndex];
     const res = await fetch(`/api/move/${currentFolder}/${filename}`, { method: 'POST' });
@@ -212,6 +226,9 @@ document.addEventListener('keydown', (e) => {
         }
     }
 });
+
+// Counter click to jump to image
+counterDiv.addEventListener('click', jumpToImage);
 
 // Start
 loadFolders();
