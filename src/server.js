@@ -6,8 +6,16 @@ const ExifReader = require('exifreader');
 const app = express();
 const PORT = 3000;
 
-const PHOTOS_BASE = '/media/jef/1.44.1-72806/photos';
-const LOW_BASE = '/media/jef/1.44.1-72806/photo-low';
+// Base folders
+// Photos live in: /home/jef/Pictures/photos/YYYY/
+// Rejected/low-quality photos go to: /home/jef/Pictures/photo-low/YYYY/
+const PHOTOS_BASE = '/home/jef/Pictures/photos';
+const LOW_BASE = '/home/jef/Pictures/photo-low';
+
+// Any folders that should never be offered as "year" options.
+// (This is defensive: if PHOTOS_BASE ever changes to a broader directory,
+// we still won't show unrelated folders like "theframe".)
+const EXCLUDED_FOLDERS = new Set(['theframe']);
 
 app.use(express.static(path.join(__dirname, 'public')));
 app.use(express.json());
@@ -17,7 +25,7 @@ app.get('/api/folders', async (req, res) => {
     try {
         const entries = await fs.readdir(PHOTOS_BASE, { withFileTypes: true });
         const folders = entries
-            .filter(e => e.isDirectory())
+            .filter(e => e.isDirectory() && !EXCLUDED_FOLDERS.has(e.name))
             .map(e => e.name)
             .sort();
         res.json(folders);
