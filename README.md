@@ -32,3 +32,8 @@ Then open http://localhost:3000 in your browser.
 3. Use arrow keys to navigate or reject photos
 4. Rejected photos are moved to `/home/jef/Pictures/photo-low/[year]/`
 5. When you reach the end of a folder, you return to folder selection
+
+## Rsync Command
+
+Syncing local folder to external drive:
+```rsync -av --delete /home/jef/Pictures/photos/ /media/jef/1.44.1-72806/photos/```
