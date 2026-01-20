@@ -36,4 +36,4 @@ Then open http://localhost:3000 in your browser.
 ## Rsync Command
 
 Syncing local folder to external drive:
-```rsync -av --delete /home/jef/Pictures/photos/ /media/jef/1.44.1-72806/photos/```
+```sudo rsync -rltDv --delete --progress  /home/jef/Pictures/photos/ /media/jef/1.44.1-72806/photos/```
