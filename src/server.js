@@ -9,7 +9,7 @@ const PORT = 3000;
 // Base folders
 // Photos live in: /home/jef/Pictures/photos/YYYY/
 // Rejected/low-quality photos go to: /home/jef/Pictures/photo-low/YYYY/
-const PHOTOS_BASE = '/home/jef/Pictures/photos';
+const PHOTOS_BASE = '/home/jef/Pictures/photos/inprogress';
 const LOW_BASE = '/home/jef/Pictures/photo-low';
 
 // Any folders that should never be offered as "year" options.
