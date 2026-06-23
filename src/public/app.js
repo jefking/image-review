@@ -1,18 +1,79 @@
 let currentFolder = null;
 let photos = [];
 let currentIndex = 0;
+let showPhotoRequestId = 0;
+
+const ratingCache = new Map();
 
 const folderSelectDiv = document.getElementById('folder-select');
 const foldersDiv = document.getElementById('folders');
 const viewerDiv = document.getElementById('viewer');
 const photoImg = document.getElementById('photo');
+const prevPreviewDiv = document.getElementById('prev-preview');
+const prevPhotoImg = document.getElementById('prev-photo');
+const prevMetaDiv = document.getElementById('prev-meta');
+const nextPreviewDiv = document.getElementById('next-preview');
+const nextPhotoImg = document.getElementById('next-photo');
+const nextMetaDiv = document.getElementById('next-meta');
 const filenameDiv = document.getElementById('filename');
 const ratingDiv = document.getElementById('rating');
 const counterDiv = document.getElementById('counter');
 
+function photoUrl(filename) {
+    return `/api/photo/${encodeURIComponent(currentFolder)}/${encodeURIComponent(filename)}`;
+}
+
+function ratingUrl(filename) {
+    return `/api/rating/${encodeURIComponent(currentFolder)}/${encodeURIComponent(filename)}`;
+}
+
+function moveUrl(filename) {
+    return `/api/move/${encodeURIComponent(currentFolder)}/${encodeURIComponent(filename)}`;
+}
+
+function normalizeRating(rating) {
+    const value = Array.isArray(rating) ? rating[0] : rating;
+    const numberValue = Number(value);
+
+    if (!Number.isFinite(numberValue)) {
+        return null;
+    }
+
+    return Math.max(0, Math.min(5, Math.round(numberValue)));
+}
+
+async function loadRating(filename) {
+    if (ratingCache.has(filename)) {
+        return ratingCache.get(filename);
+    }
+
+    try {
+        const res = await fetch(ratingUrl(filename));
+        const data = await res.json();
+        const rating = normalizeRating(data.rating);
+        ratingCache.set(filename, rating);
+        return rating;
+    } catch (e) {
+        ratingCache.set(filename, null);
+        return null;
+    }
+}
+
+function isSelectableRating(rating) {
+    return rating === null || rating < 4;
+}
+
+function formatRating(rating) {
+    return rating === null ? 'No rating' : '★'.repeat(rating) + '☆'.repeat(5 - rating);
+}
+
+function formatSideMeta(filename, rating) {
+    return rating === null ? filename : `${filename} ${formatRating(rating)}`;
+}
+
 // Save state to localStorage
 function saveState() {
-    if (currentFolder && photos.length > 0) {
+    if (currentFolder && photos.length > 0 && photos[currentIndex]) {
         const state = {
             folder: currentFolder,
             filename: photos[currentIndex],
@@ -35,6 +96,59 @@ function getSavedState() {
 // Clear saved state
 function clearState() {
     localStorage.removeItem('photoReviewState');
+}
+
+async function loadPhotoList(folder) {
+    currentFolder = folder;
+    ratingCache.clear();
+
+    const res = await fetch(`/api/photos/${encodeURIComponent(folder)}`);
+    photos = await res.json();
+}
+
+async function findSelectableIndex(startIndex, direction) {
+    if (photos.length === 0) {
+        return -1;
+    }
+
+    const step = direction < 0 ? -1 : 1;
+    let index = startIndex;
+
+    if (step > 0 && index < 0) {
+        index = 0;
+    } else if (step > 0 && index >= photos.length) {
+        return -1;
+    } else if (step < 0 && index >= photos.length) {
+        index = photos.length - 1;
+    } else if (step < 0 && index < 0) {
+        return -1;
+    }
+
+    while (index >= 0 && index < photos.length) {
+        const rating = await loadRating(photos[index]);
+        if (isSelectableRating(rating)) {
+            return index;
+        }
+        index += step;
+    }
+
+    return -1;
+}
+
+async function findNearestSelectableIndex(startIndex, preferredDirection = 1) {
+    if (photos.length === 0) {
+        return -1;
+    }
+
+    const step = preferredDirection < 0 ? -1 : 1;
+    const boundedStart = Math.max(0, Math.min(startIndex, photos.length - 1));
+    const preferredIndex = await findSelectableIndex(boundedStart, step);
+
+    if (preferredIndex !== -1) {
+        return preferredIndex;
+    }
+
+    return findSelectableIndex(boundedStart - step, -step);
 }
 
 // Load folder list on start
@@ -67,19 +181,18 @@ async function loadFolders() {
 }
 
 async function selectFolder(folder, startIndex = 0) {
-    currentFolder = folder;
-    const res = await fetch(`/api/photos/${folder}`);
-    photos = await res.json();
-    currentIndex = startIndex;
+    await loadPhotoList(folder);
 
     if (photos.length === 0) {
         alert('No photos in this folder');
         return;
     }
 
-    // Make sure index is valid
-    if (currentIndex >= photos.length) {
-        currentIndex = 0;
+    currentIndex = await findNearestSelectableIndex(startIndex, 1);
+    if (currentIndex === -1) {
+        alert('No archive candidates in this folder');
+        clearState();
+        return;
     }
 
     folderSelectDiv.style.display = 'none';
@@ -88,9 +201,7 @@ async function selectFolder(folder, startIndex = 0) {
 }
 
 async function resumeSession(saved) {
-    currentFolder = saved.folder;
-    const res = await fetch(`/api/photos/${saved.folder}`);
-    photos = await res.json();
+    await loadPhotoList(saved.folder);
 
     if (photos.length === 0) {
         alert('No photos in this folder');
@@ -100,15 +211,63 @@ async function resumeSession(saved) {
 
     // Find the saved photo in the list (it might have moved due to deletions)
     const savedIndex = photos.indexOf(saved.filename);
-    currentIndex = savedIndex >= 0 ? savedIndex : 0;
+    const fallbackIndex = Number.isInteger(saved.index) ? saved.index : 0;
+    currentIndex = await findNearestSelectableIndex(savedIndex >= 0 ? savedIndex : fallbackIndex, 1);
+
+    if (currentIndex === -1) {
+        alert('No archive candidates in this folder');
+        clearState();
+        return;
+    }
 
     folderSelectDiv.style.display = 'none';
     viewerDiv.style.display = 'block';
     showPhoto();
 }
 
-function showPhoto(skipHighRated = true) {
-    if (currentIndex >= photos.length) {
+function clearSidePreview(previewDiv, img, metaDiv) {
+    previewDiv.classList.add('empty');
+    previewDiv.classList.remove('high-rated');
+    img.removeAttribute('src');
+    img.alt = '';
+    metaDiv.textContent = '';
+}
+
+async function renderSidePreview(previewDiv, img, metaDiv, index, requestId) {
+    if (requestId !== showPhotoRequestId) {
+        return;
+    }
+
+    if (index < 0 || index >= photos.length) {
+        clearSidePreview(previewDiv, img, metaDiv);
+        return;
+    }
+
+    const filename = photos[index];
+    const rating = await loadRating(filename);
+
+    if (requestId !== showPhotoRequestId) {
+        return;
+    }
+
+    previewDiv.classList.remove('empty');
+    previewDiv.classList.toggle('high-rated', !isSelectableRating(rating));
+    img.src = photoUrl(filename);
+    img.alt = filename;
+    metaDiv.textContent = formatSideMeta(filename, rating);
+}
+
+async function updateSidePreviews(requestId) {
+    await Promise.all([
+        renderSidePreview(prevPreviewDiv, prevPhotoImg, prevMetaDiv, currentIndex - 1, requestId),
+        renderSidePreview(nextPreviewDiv, nextPhotoImg, nextMetaDiv, currentIndex + 1, requestId)
+    ]);
+}
+
+async function showPhoto() {
+    const requestId = ++showPhotoRequestId;
+
+    if (currentIndex < 0 || currentIndex >= photos.length) {
         // End of folder
         clearState();
         backToFolders();
@@ -117,58 +276,64 @@ function showPhoto(skipHighRated = true) {
 
     const filename = photos[currentIndex];
 
-    // Load rating first to check if we should skip
+    // Load rating first to ensure the center photo is archive-eligible.
     ratingDiv.textContent = '...';
-    fetch(`/api/rating/${currentFolder}/${filename}`)
-        .then(r => r.json())
-        .then(data => {
-            const rating = data.rating;
+    const rating = await loadRating(filename);
 
-            // Skip photos rated 4 or higher
-            if (skipHighRated && rating !== null && rating >= 4) {
-                if (currentIndex < photos.length - 1) {
-                    currentIndex++;
-                    showPhoto(true);
-                    return;
-                } else {
-                    // No more photos
-                    clearState();
-                    backToFolders();
-                    return;
-                }
-            }
+    if (requestId !== showPhotoRequestId) {
+        return;
+    }
 
-            // Show this photo
-            photoImg.src = `/api/photo/${currentFolder}/${filename}`;
-            filenameDiv.textContent = filename;
-            counterDiv.textContent = `${currentIndex + 1} / ${photos.length}`;
-            saveState();
+    if (!isSelectableRating(rating)) {
+        const selectableIndex = await findNearestSelectableIndex(currentIndex, 1);
 
-            if (rating !== null) {
-                ratingDiv.textContent = '★'.repeat(rating) + '☆'.repeat(5 - rating);
-            } else {
-                ratingDiv.textContent = 'No rating';
-            }
-        });
-}
+        if (requestId !== showPhotoRequestId) {
+            return;
+        }
 
-function nextPhoto() {
-    if (currentIndex < photos.length - 1) {
-        currentIndex++;
+        if (selectableIndex === -1) {
+            clearState();
+            backToFolders();
+            return;
+        }
+
+        currentIndex = selectableIndex;
         showPhoto();
-    } else {
+        return;
+    }
+
+    // Show this archive candidate in the center.
+    photoImg.src = photoUrl(filename);
+    photoImg.alt = filename;
+    filenameDiv.textContent = filename;
+    counterDiv.textContent = `${currentIndex + 1} / ${photos.length}`;
+    ratingDiv.textContent = formatRating(rating);
+    saveState();
+    updateSidePreviews(requestId);
+}
+
+async function nextPhoto() {
+    const nextIndex = await findSelectableIndex(currentIndex + 1, 1);
+
+    if (nextIndex === -1) {
+        clearState();
         backToFolders();
+    } else {
+        currentIndex = nextIndex;
+        showPhoto();
     }
 }
 
-function prevPhoto() {
-    if (currentIndex > 0) {
-        currentIndex--;
-        showPhoto(false); // Don't skip when going back - let user see all photos
+async function prevPhoto() {
+    const previousIndex = await findSelectableIndex(currentIndex - 1, -1);
+
+    if (previousIndex !== -1) {
+        currentIndex = previousIndex;
+        showPhoto();
     }
 }
 
-function jumpToImage() {
+async function jumpToImage() {
     const input = prompt(`Jump to image (1-${photos.length}):`);
     if (input === null) return; // User cancelled
 
@@ -178,29 +343,67 @@ function jumpToImage() {
         return;
     }
 
-    currentIndex = imageNum - 1; // Convert to 0-based index
-    showPhoto(false); // Don't skip - show the exact image requested
+    const targetIndex = imageNum - 1; // Convert to 0-based index
+    const targetRating = await loadRating(photos[targetIndex]);
+    const selectableIndex = await findNearestSelectableIndex(targetIndex, 1);
+
+    if (selectableIndex === -1) {
+        alert('No archive candidates in this folder');
+        clearState();
+        backToFolders();
+        return;
+    }
+
+    if (!isSelectableRating(targetRating)) {
+        alert('That photo is rated 4 or 5 stars, so it stays out of the center selection.');
+    }
+
+    currentIndex = selectableIndex;
+    showPhoto();
 }
 
 async function moveToLow() {
     const filename = photos[currentIndex];
-    const res = await fetch(`/api/move/${currentFolder}/${filename}`, { method: 'POST' });
-    
+    const rating = await loadRating(filename);
+
+    if (!isSelectableRating(rating)) {
+        alert('This photo is rated 4 or 5 stars and cannot be archived.');
+        showPhoto();
+        return;
+    }
+
+    const res = await fetch(moveUrl(filename), { method: 'POST' });
+
     if (res.ok) {
-        // Remove from array and show next
+        // Remove from array and show next selectable candidate.
         photos.splice(currentIndex, 1);
+        ratingCache.delete(filename);
+
         if (photos.length === 0) {
             backToFolders();
-        } else if (currentIndex >= photos.length) {
-            currentIndex = photos.length - 1;
-            showPhoto();
-        } else {
-            showPhoto();
+            return;
         }
+
+        const nextIndex = await findSelectableIndex(currentIndex, 1);
+        const selectableIndex = nextIndex !== -1
+            ? nextIndex
+            : await findSelectableIndex(currentIndex - 1, -1);
+
+        if (selectableIndex === -1) {
+            clearState();
+            backToFolders();
+            return;
+        }
+
+        currentIndex = selectableIndex;
+        showPhoto();
+    } else {
+        alert('Could not move photo to low folder');
     }
 }
 
 function backToFolders() {
+    showPhotoRequestId++;
     viewerDiv.style.display = 'none';
     folderSelectDiv.style.display = 'flex';
     loadFolders(); // Refresh folder list
@@ -232,4 +435,3 @@ counterDiv.addEventListener('click', jumpToImage);
 
 // Start
 loadFolders();
-
