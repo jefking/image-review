@@ -8,8 +8,8 @@ const ratingCache = new Map();
 const folderSelectDiv = document.getElementById('folder-select');
 const foldersDiv = document.getElementById('folders');
 const viewerDiv = document.getElementById('viewer');
+const reviewStripDiv = document.getElementById('review-strip');
 const photoImg = document.getElementById('photo');
-const mainPreviewDiv = document.querySelector('.main-preview');
 const prevPreviewDiv = document.getElementById('prev-preview');
 const prevPhotoImg = document.getElementById('prev-photo');
 const prevMetaDiv = document.getElementById('prev-meta');
@@ -32,13 +32,41 @@ function moveUrl(filename) {
     return `/api/move/${encodeURIComponent(currentFolder)}/${encodeURIComponent(filename)}`;
 }
 
-function updateMainPhotoRatio() {
-    if (photoImg.naturalWidth > 0 && photoImg.naturalHeight > 0) {
-        mainPreviewDiv.style.setProperty(
-            '--main-photo-ratio',
-            `${photoImg.naturalWidth} / ${photoImg.naturalHeight}`
-        );
+function pixelValue(value) {
+    const parsed = parseFloat(value);
+    return Number.isFinite(parsed) ? parsed : 0;
+}
+
+function updateViewerLayout() {
+    if (viewerDiv.style.display !== 'block') {
+        return;
     }
+
+    const styles = getComputedStyle(reviewStripDiv);
+    const availableWidth = Math.max(
+        0,
+        reviewStripDiv.clientWidth - pixelValue(styles.paddingLeft) - pixelValue(styles.paddingRight)
+    );
+    const availableHeight = Math.max(
+        0,
+        reviewStripDiv.clientHeight - pixelValue(styles.paddingTop) - pixelValue(styles.paddingBottom)
+    );
+    const sidePreviewsVisible = getComputedStyle(prevPreviewDiv).display !== 'none';
+    const gap = sidePreviewsVisible ? 12 : 0;
+    const totalGap = sidePreviewsVisible ? gap * 2 : 0;
+    const mainRatio = photoImg.naturalWidth > 0 && photoImg.naturalHeight > 0
+        ? photoImg.naturalWidth / photoImg.naturalHeight
+        : 1;
+    const maxMainWidth = Math.max(0, availableWidth - totalGap);
+    const mainFrameWidth = Math.min(availableHeight * mainRatio, maxMainWidth);
+    const sideFrameWidth = sidePreviewsVisible
+        ? Math.max(0, (availableWidth - mainFrameWidth - totalGap) / 2)
+        : 0;
+
+    reviewStripDiv.style.setProperty('--frame-height', `${availableHeight}px`);
+    reviewStripDiv.style.setProperty('--main-frame-width', `${mainFrameWidth}px`);
+    reviewStripDiv.style.setProperty('--side-frame-width', `${sideFrameWidth}px`);
+    reviewStripDiv.style.setProperty('--review-gap', `${gap}px`);
 }
 
 function normalizeRating(rating) {
@@ -207,6 +235,7 @@ async function selectFolder(folder, startIndex = 0) {
 
     folderSelectDiv.style.display = 'none';
     viewerDiv.style.display = 'block';
+    updateViewerLayout();
     showPhoto();
 }
 
@@ -232,6 +261,7 @@ async function resumeSession(saved) {
 
     folderSelectDiv.style.display = 'none';
     viewerDiv.style.display = 'block';
+    updateViewerLayout();
     showPhoto();
 }
 
@@ -315,6 +345,9 @@ async function showPhoto() {
     // Show this archive candidate in the center.
     photoImg.src = photoUrl(filename);
     photoImg.alt = filename;
+    if (photoImg.complete) {
+        updateViewerLayout();
+    }
     filenameDiv.textContent = filename;
     counterDiv.textContent = `${currentIndex + 1} / ${photos.length}`;
     ratingDiv.textContent = formatRating(rating);
@@ -442,7 +475,8 @@ document.addEventListener('keydown', (e) => {
 
 // Counter click to jump to image
 counterDiv.addEventListener('click', jumpToImage);
-photoImg.addEventListener('load', updateMainPhotoRatio);
+photoImg.addEventListener('load', updateViewerLayout);
+window.addEventListener('resize', updateViewerLayout);
 
 // Start
 loadFolders();

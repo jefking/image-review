@@ -42,25 +42,30 @@
             overflow: hidden;
         }
         #review-strip {
-            display: flex;
-            gap: 12px;
-            align-items: stretch;
+            display: grid;
+            grid-template-columns:
+                var(--side-frame-width, minmax(0, 1fr))
+                var(--main-frame-width, minmax(0, 3.4fr))
+                var(--side-frame-width, minmax(0, 1fr));
+            grid-template-rows: var(--frame-height, 100%);
+            gap: var(--review-gap, 12px);
+            align-content: center;
             justify-content: center;
             height: 100vh;
             padding: 14px;
+            overflow: hidden;
         }
         .photo-frame {
             min-width: 0;
+            min-height: 0;
             height: 100%;
             display: flex;
             align-items: center;
             justify-content: center;
+            overflow: hidden;
             position: relative;
         }
         .side-preview {
-            flex: 1 1 0;
-            height: 100%;
-            min-width: 0;
             opacity: 0.58;
         }
         .side-preview.empty {
@@ -70,10 +75,7 @@
             opacity: 0.78;
         }
         .main-preview {
-            aspect-ratio: var(--main-photo-ratio, 1 / 1);
-            flex: 0 1 auto;
-            height: 100%;
-            max-width: 100%;
+            width: 100%;
         }
         #photo,
         .side-photo {
@@ -140,6 +142,9 @@
         }
         @media (max-width: 900px) {
             #review-strip {
+                grid-template-columns: minmax(0, 1fr);
+                grid-template-rows: 1fr;
+                gap: 0;
                 padding: 8px;
             }
             .side-preview {
