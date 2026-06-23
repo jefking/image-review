@@ -9,6 +9,7 @@ const folderSelectDiv = document.getElementById('folder-select');
 const foldersDiv = document.getElementById('folders');
 const viewerDiv = document.getElementById('viewer');
 const photoImg = document.getElementById('photo');
+const mainPreviewDiv = document.querySelector('.main-preview');
 const prevPreviewDiv = document.getElementById('prev-preview');
 const prevPhotoImg = document.getElementById('prev-photo');
 const prevMetaDiv = document.getElementById('prev-meta');
@@ -29,6 +30,15 @@ function ratingUrl(filename) {
 
 function moveUrl(filename) {
     return `/api/move/${encodeURIComponent(currentFolder)}/${encodeURIComponent(filename)}`;
+}
+
+function updateMainPhotoRatio() {
+    if (photoImg.naturalWidth > 0 && photoImg.naturalHeight > 0) {
+        mainPreviewDiv.style.setProperty(
+            '--main-photo-ratio',
+            `${photoImg.naturalWidth} / ${photoImg.naturalHeight}`
+        );
+    }
 }
 
 function normalizeRating(rating) {
@@ -432,6 +442,7 @@ document.addEventListener('keydown', (e) => {
 
 // Counter click to jump to image
 counterDiv.addEventListener('click', jumpToImage);
+photoImg.addEventListener('load', updateMainPhotoRatio);
 
 // Start
 loadFolders();
